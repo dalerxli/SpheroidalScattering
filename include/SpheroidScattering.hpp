@@ -26,6 +26,12 @@ class SpheroidScattering {
         GetProlateSpheroidParameters(tipRadius, length,
                                       ellipse_a, ellipse_b, spheroid_ksi, spheroid_d);
 
+        std::cout << "a: " << ellipse_a << " "
+                  << "b: " << ellipse_b << " "
+                  << "L: " << length << " "
+                  << "d: " << spheroid_d << " "
+                  << std::endl;
+
         numOfHarmonics = 8;
     }
 
@@ -35,10 +41,10 @@ class SpheroidScattering {
         a = length/2.0;
         b = std::sqrt(b2_div_a * a);
 
-        // d*ksi = a     d*sqrt(ksi**2 - 1) = b
+        // d/2*ksi = a     d/2*sqrt(ksi**2 - 1) = b
         // ksi**2 * (1 - (b/a)**2) = 1
-        ksi = 1.0/(1.0 - (b/a)*(b/a));
-        d = a / ksi;
+        ksi = std::sqrt(1.0/(1.0 - (b/a)*(b/a)));
+        d = 2.0 * a / ksi;
 
         return;
     }
@@ -422,7 +428,7 @@ class SpheroidScattering {
         E_ksi.resize(n_pts);
         E_phi.resize(n_pts);
         for(int i = 0; i < n_pts; ++i) {
-            double eta = r_pts[i][0];
+            double eta = r_pts[i][0];   if (eta == 1.0) { eta = 1.0 - 1.0e-8; }
             double ksi = r_pts[i][1];
             double phi = r_pts[i][2];
             int M = alpha.GetNRow();
@@ -454,24 +460,25 @@ class SpheroidScattering {
             }
         }
     }
-    
+
     SpheroidalInterpolator GetFieldInterpolator (
         Matrix<std::complex<double>>& alpha,
         Matrix<std::complex<double>>& beta,
         Matrix<std::complex<double>>& gamma,
         std::array<std::pair<double, double>, 3>& coord_limits,   //((eta0, eta1), (ksi0, ksi1), (phi0, phi1))
-        std::array<std::size_t, 3>& numOfSamples
+        std::array<std::size_t, 3>& numOfSamples,
+        int ksi_nonuniform_power = 2
     ) {
         SpheroidalInterpolator sphInterpolator;
         sphInterpolator.SetEtaLimits(coord_limits[0]);
         sphInterpolator.SetKsiLimits(coord_limits[1]);
         sphInterpolator.SetPhiLimits(coord_limits[2]);
-        
+
         sphInterpolator.SetNumOfSamples(numOfSamples[0], numOfSamples[1], numOfSamples[2]);
-        
-        sphInterpolator.SetupMesh();
-        
-        GetFieldAtSpheroidalPoints(alpha, beta, gamma, sphInterpolator.GetMesh(), 
+
+        sphInterpolator.SetupMesh(ksi_nonuniform_power);
+
+        GetFieldAtSpheroidalPoints(alpha, beta, gamma, sphInterpolator.GetMesh(),
                                                        sphInterpolator.GetE_eta(),
                                                        sphInterpolator.GetE_ksi(),
                                                        sphInterpolator.GetE_phi()
@@ -479,10 +486,91 @@ class SpheroidScattering {
         int degree = 3;
         sphInterpolator.SetupSamples();
         sphInterpolator.SetupBsplines(degree);
-        
-        return sphInterpolator;        
+
+        return sphInterpolator;
     }
-    
+
+    void InterpolateFieldAtCartesianPoints(
+                                   Matrix<std::complex<double>>& alpha,
+                                   Matrix<std::complex<double>>& beta,
+                                   Matrix<std::complex<double>>& gamma,
+                                   std::vector<std::array<double, 3>>& r_pts,
+                                   std::vector<std::complex<double>>& E_eta,
+                                   std::vector<std::complex<double>>& E_ksi,
+                                   std::vector<std::complex<double>>& E_phi,
+                                   bool totalField = true) {
+        // r = [x, y, z]
+        double eta_0 = (ellipse_a - 2.5*tipRadius) / (spheroid_d/2);
+        double eta_1 = 1.0;
+        double ksi_0 = spheroid_ksi;
+        double ksi_1 = (ellipse_a + 2.5*tipRadius) / (spheroid_d/2);
+        double phi_0 = 0.0;
+        double phi_1 = 2.0 * M_PI;
+
+        std::cout << "eta_0: " << eta_0 << "   eta_1: " << eta_1 << std::endl;
+        std::cout << "ksi_0: " << ksi_0 << "   ksi_1: " << ksi_1 << std::endl;
+
+        std::array<std::pair<double, double>, 3> coord_limits = {std::pair<double, double>(eta_0, eta_1),
+                                                                 std::pair<double, double>(ksi_0, ksi_1),
+                                                                 std::pair<double, double>(phi_0, phi_1)};
+
+        std::array<std::size_t, 3> numOfSampls = {5, 5, 5};
+
+        auto sphInterpolator = GetFieldInterpolator(alpha, beta, gamma, coord_limits, numOfSampls);
+
+        std::size_t n_pts = r_pts.size();
+        E_eta.resize(n_pts);
+        E_ksi.resize(n_pts);
+        E_phi.resize(n_pts);
+        double eta, ksi, phi;
+
+        std::complex<double> _1j(0.0, 1.0);
+
+        std::vector<std::array<double, 3>> r_pts_sph(n_pts);
+        std::vector<bool> mask(n_pts);
+        for(std::size_t i = 0; i < n_pts; ++i) {
+            auto& r = r_pts[i];
+            double x = r[0];
+            double y = r[1];
+            double z = r[2];
+            CoordinatePointTransformRectToSpheroid(x, y, z, eta, ksi, phi);
+            r_pts_sph[i] = {eta, ksi, phi};
+
+            //std::cout << x << " " << y << " " << z << " " << eta << " " << ksi/ksi_0 << " " << phi << " " << std::endl;
+
+            if (ksi >= ksi_0 && ksi <= ksi_1 && eta >= eta_0) {
+                mask[i] = true;
+            } else {
+                mask[i] = false;
+            }
+        }
+
+        sphInterpolator.InterpolateFieldAtSpheroidalPoints(r_pts_sph, E_eta, E_ksi, E_phi, mask);
+
+        if(totalField) {
+            const auto& E0 = e0_incidence;
+            const auto& k = wavenumber;
+            for(std::size_t i = 0; i < n_pts; ++i) {
+                auto& r = r_pts[i];
+                double x = r[0];
+                double y = r[1];
+                double z = r[2];
+
+                CoordinatePointTransformRectToSpheroid(x, y, z, eta, ksi, phi);
+
+                auto z_hat_eta = ksi * std::sqrt((1.0 - eta*eta)/(ksi*ksi - eta*eta));
+                auto z_hat_ksi = eta * std::sqrt((ksi*ksi - 1.0)/(ksi*ksi - eta*eta));
+                //x = d/2*np.sqrt(1 - eta**2)*np.sqrt(ksi**2 - 1)*np.cos(phi);
+                assert(incidenceAngle == M_PI/2.0);
+                if (ksi >= ksi_0) {
+                    E_eta[i] += E0*std::exp(_1j*k*x)*z_hat_eta;
+                    E_ksi[i] += E0*std::exp(_1j*k*x)*z_hat_ksi;
+                }
+            }
+        }
+    }
+
+
     void GetFieldAtCartesianPoints(Matrix<std::complex<double>>& alpha,
                                    Matrix<std::complex<double>>& beta,
                                    Matrix<std::complex<double>>& gamma,
@@ -513,6 +601,9 @@ class SpheroidScattering {
             double y = r[1];
             double z = r[2];
             CoordinatePointTransformRectToSpheroid(x, y, z, eta, ksi, phi);
+
+            //std::cout << x << " " << y << " " << z << " " << eta << " " << ksi << " " << phi << " " << std::endl;
+
             M = alpha.GetNRow();
             N = alpha.GetNCol();
             for(int m = 0; m < M; ++m) {
@@ -568,6 +659,58 @@ class SpheroidScattering {
         phi = std::atan2(y, x);
     }
 
+    static
+    void VectorTransformFromRectToSpheroid(double eta, double ksi, double phi,
+                                               std::complex<double> e_x, std::complex<double> e_y, std::complex<double> e_z,
+                                               std::complex<double>& e_eta, std::complex<double>& e_ksi, std::complex<double>& e_phi
+                                               ) {
+        double eta_sq = eta * eta;
+        double ksi_sq = ksi * ksi;
+        e_eta = -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::cos(phi) * e_x
+                -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::sin(phi) * e_y
+                +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * e_z;
+
+        e_ksi = +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::cos(phi) * e_x
+                +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::sin(phi) * e_y
+                +eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * e_z;
+
+        e_phi = -std::sin(phi) * e_x + std::cos(phi) * e_y;
+    }
+
+    static
+    void VectorTransformFromSpheroidToRect(double eta, double ksi, double phi,
+                                               std::complex<double> e_eta, std::complex<double> e_ksi, std::complex<double> e_phi,
+                                               std::complex<double>& e_x, std::complex<double>& e_y, std::complex<double>& e_z
+                                               ) {
+        double eta_sq = eta * eta;
+        double ksi_sq = ksi * ksi;
+        e_x =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::cos(phi) * e_eta
+                +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::cos(phi) * e_ksi
+                -std::sin(phi) * e_phi;
+
+        e_y =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::sin(phi) * e_eta
+                +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::sin(phi) * e_ksi
+                +std::cos(phi) * e_phi;
+
+        e_z =   +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * e_eta
+                +eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * e_ksi;
+    }
+
+    void GetCoordinateScaleFactors(double eta, double ksi, double phi, double& h_eta, double& h_ksi, double& h_phi) {
+        double ksi_sq = ksi * ksi;
+        double eta_sq = eta * eta;
+        h_eta = spheroid_d / 2.0 * std::sqrt((ksi_sq - eta_sq) / (1.0 - eta_sq));
+        h_ksi = spheroid_d / 2.0 * std::sqrt((ksi_sq - eta_sq) / (ksi_sq - 1.0));
+        h_phi = spheroid_d / 2.0 * std::sqrt((1.0 - eta_sq) * (ksi_sq - 1.0));
+    }
+
+    double GetSurfaceElement(double eta, double phi) {
+        double& ksi = spheroid_ksi;
+        double ksi_sq = ksi * ksi;
+        double eta_sq = eta * eta;
+        return  (spheroid_d / 2.0) * (spheroid_d / 2.0) * std::sqrt((ksi_sq - eta_sq) * (ksi_sq - 1.0));
+    }
+
     auto GetFieldAroundTipAtXZPlane(double Dx, double Dz, int nx, int nz,
                                     Matrix<std::complex<double>>& alpha,
                                     Matrix<std::complex<double>>& beta,
@@ -587,7 +730,7 @@ class SpheroidScattering {
 
         std::vector<double> z(nz);
         for(int i = 0; i < nz; ++i) {
-            z[i] = a/2.0 - Dz/2.0 + (double)i * Dz / (nz - 1);
+            z[i] = a - Dz/2.0 + (double)i * Dz / (nz - 1);
         }
 
         std::vector<std::array<double, 3>> r_pts;
@@ -608,7 +751,8 @@ class SpheroidScattering {
         std::vector<std::complex<double>> E_eta;
         std::vector<std::complex<double>> E_ksi;
         std::vector<std::complex<double>> E_phi;
-        GetFieldAtCartesianPoints(alpha, beta, gamma, r_pts, E_eta, E_ksi, E_phi, true);
+        //GetFieldAtCartesianPoints(alpha, beta, gamma, r_pts, E_eta, E_ksi, E_phi, true);
+        InterpolateFieldAtCartesianPoints(alpha, beta, gamma, r_pts, E_eta, E_ksi, E_phi, true);
 
         Matrix<std::complex<double>> E_ksi_mesh(nx, nz);
         for(int i = 0; i < r_inds.size(); ++i) {
@@ -618,25 +762,29 @@ class SpheroidScattering {
         return E_ksi_mesh;
     }
 
-    std::array<Matrix<std::complex<double>>, 3> VerifySurfaceField() {
+    std::array<Matrix<std::complex<double>>, 3> VerifySurfaceField(std::complex<double>* tip_field = nullptr) {
         std::cout << "Number of harmonics : " << numOfHarmonics << std::endl;
 
         auto A_b = ConstructMatrix();
         auto& A = A_b[0];
         auto& b = A_b[1];
 
-        auto x = SolveLinear(A, b, true);
+        //auto x = SolveLinear(A, b, true);
         //std::cout << "x : " << std::endl;
         //x.Print();
+        //auto x = SolveLinear_Ei(A, b);
+        //auto x = SolveLinear_np_file(A, b);
+        auto x = SolveLinear_umfpack(A, b);
 
-        std::cout << "error : " << (A*x - b).GetNorm() << std::endl;
+        std::cout << "error : " << (A*x - b).GetNorm() / b.GetNorm() << std::endl;
+        //std::cout << "error : " << (A*x2 - b).GetNorm() << std::endl;
 
         auto alpha_beta_gamma = GetAlphaBetaGamma_from_X(x);
         auto& alpha = alpha_beta_gamma[0];
         auto& beta = alpha_beta_gamma[1];
         auto& gamma = alpha_beta_gamma[2];
 
-        double eps = 1.0e-5;
+        double eps = 1.0e-7;
         int n_pts = 20;
         double eta_0 = 0.0;
         double eta_1 = 1.0 - eps;
@@ -673,6 +821,10 @@ class SpheroidScattering {
                                                                          E_ksi1[i].real(), E_ksi1[i].imag(),
                                                                          E_ksi2[i].real(), E_ksi2[i].imag(),
                                                                          std::abs(E_ksi2[i]));
+        }
+
+        if(tip_field != nullptr) {
+            *tip_field = E_ksi2[n_pts - 1];
         }
 
         return alpha_beta_gamma;
