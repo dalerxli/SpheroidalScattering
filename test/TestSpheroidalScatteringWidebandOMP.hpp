@@ -76,8 +76,8 @@ void TestSpheroidalScatteringWideband(int n_thread = 4) {
         if(plotFields) {
             double Dx = 4.0*tipRadius;
             double Dz = 4.0*tipRadius;
-            int nx = 40;
-            int nz = 40;
+            int nx = 100;
+            int nz = 100;
             auto E_ksi_mesh = spheroid.GetFieldAroundTipAtXZPlane(Dx, Dz, nx, nz, alpha, beta, gamma);
 
             std::string eksi_fileSuffix = std::string("_")

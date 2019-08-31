@@ -79,6 +79,7 @@ void TestAngularFirstKind(int m, int n, double c, double x) {
     std::cout << "s1f: " << s1f << "  s1d: " << s1d << std::endl;
 }
 
+#ifdef _LAPACK_IS_IN_USE_
 lapack_int TestLapack_dgels() {
    double a[5][3] = {1,1,1,2,3,4,3,5,2,4,2,5,5,4,3};
    double b[5][2] = {-10,-3,12,14,14,12,16,16,18,16};
@@ -406,6 +407,7 @@ void TestMatSolver() {
         std::cout << ax_b_i - B0(i, 0) << std::endl;
     }
 }
+#endif // _LAPACK_IS_IN_USE_
 
 void TestMatrixRead() {
     Matrix<std::complex<double>> A = ReadMatrixFromFile<std::complex<double>>("out/E_ksi.data");

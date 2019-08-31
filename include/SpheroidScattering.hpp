@@ -14,6 +14,8 @@
 #include "MatAlgebra.hpp"
 #include "SpheroidalInterpolator.hpp"
 
+#include <dirent.h>
+#include "Utility.hpp"
 
 constexpr double speedOfLight = 2.99792458e8;    // m/s
 
@@ -469,7 +471,7 @@ class SpheroidScattering {
         std::array<std::size_t, 3>& numOfSamples,
         int ksi_nonuniform_power = 2
     ) {
-        SpheroidalInterpolator sphInterpolator;
+        sphInterpolator = SpheroidalInterpolator(3);
         sphInterpolator.SetEtaLimits(coord_limits[0]);
         sphInterpolator.SetKsiLimits(coord_limits[1]);
         sphInterpolator.SetPhiLimits(coord_limits[2]);
@@ -487,6 +489,10 @@ class SpheroidScattering {
         sphInterpolator.SetupSamples();
         sphInterpolator.SetupBsplines(degree);
 
+        return sphInterpolator;
+    }
+
+    SpheroidalInterpolator& GetSpheroidalInterpolator() {
         return sphInterpolator;
     }
 
@@ -696,6 +702,87 @@ class SpheroidScattering {
                 +eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * e_ksi;
     }
 
+    static
+    void VectorTransformFromSpheroidToRect(std::vector<std::array<double, 3>>& r_pts_sph,
+                                           std::vector<std::complex<double>>& e_eta_pts,
+                                           std::vector<std::complex<double>>& e_ksi_pts,
+                                           std::vector<std::complex<double>>& e_phi_pts,
+                                           std::vector<std::complex<double>>& e_x_pts,
+                                           std::vector<std::complex<double>>& e_y_pts,
+                                           std::vector<std::complex<double>>& e_z_pts
+                                           ) {
+        std::size_t n_pts = r_pts_sph.size();
+        assert(e_eta_pts.size() == n_pts && e_ksi_pts.size() == n_pts && e_phi_pts.size() == n_pts);
+        e_x_pts.resize(n_pts);
+        e_y_pts.resize(n_pts);
+        e_z_pts.resize(n_pts);
+        for(int i = 0; i < r_pts_sph.size(); ++i) {
+            auto& r_pt = r_pts_sph[i];
+            double eta = r_pt[0];
+            double ksi = r_pt[1];
+            double phi = r_pt[2];
+
+            auto& e_eta = e_eta_pts[i];
+            auto& e_ksi = e_ksi_pts[i];
+            auto& e_phi = e_phi_pts[i];
+
+            auto& e_x = e_x_pts[i];
+            auto& e_y = e_y_pts[i];
+            auto& e_z = e_z_pts[i];
+
+            double eta_sq = eta * eta;
+            double ksi_sq = ksi * ksi;
+            e_x =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::cos(phi) * e_eta
+                    +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::cos(phi) * e_ksi
+                    -std::sin(phi) * e_phi;
+
+            e_y =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::sin(phi) * e_eta
+                    +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::sin(phi) * e_ksi
+                    +std::cos(phi) * e_phi;
+
+            e_z =   +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * e_eta
+                    +eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * e_ksi;
+        }
+    }
+
+    static
+    void VectorTransformFromSpheroidToRect(std::vector<std::array<double, 3>>& r_pts_sph,
+                                           std::vector<std::array<std::complex<double>, 3>>& e_ekp_pts,
+                                           std::vector<std::array<std::complex<double>, 3>>& e_xyz_pts
+                                           ) {
+        assert(r_pts_sph.size() == e_ekp_pts.size());
+        e_xyz_pts.resize(r_pts_sph.size());
+        for(int i = 0; i < r_pts_sph.size(); ++i) {
+            auto& r_pt = r_pts_sph[i];
+            double eta = r_pt[0];
+            double ksi = r_pt[1];
+            double phi = r_pt[2];
+
+            auto& e_sph = e_ekp_pts[i];
+            auto& e_eta = e_sph[0];
+            auto& e_ksi = e_sph[1];
+            auto& e_phi = e_sph[2];
+
+            auto& e_xyz = e_xyz_pts[i];
+            auto& e_x = e_sph[0];
+            auto& e_y = e_sph[1];
+            auto& e_z = e_sph[2];
+
+            double eta_sq = eta * eta;
+            double ksi_sq = ksi * ksi;
+            e_x =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::cos(phi) * e_eta
+                    +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::cos(phi) * e_ksi
+                    -std::sin(phi) * e_phi;
+
+            e_y =   -eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * std::sin(phi) * e_eta
+                    +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * std::sin(phi) * e_ksi
+                    +std::cos(phi) * e_phi;
+
+            e_z =   +ksi * std::sqrt((1.0 - eta_sq) / (ksi_sq - eta_sq)) * e_eta
+                    +eta * std::sqrt((ksi_sq - 1.0) / (ksi_sq - eta_sq)) * e_ksi;
+        }
+    }
+
     void GetCoordinateScaleFactors(double eta, double ksi, double phi, double& h_eta, double& h_ksi, double& h_phi) {
         double ksi_sq = ksi * ksi;
         double eta_sq = eta * eta;
@@ -830,6 +917,109 @@ class SpheroidScattering {
         return alpha_beta_gamma;
     }
 
+    void SetTemporalFieldInterpolators(std::string folder) {
+        // directory content
+        DIR* dirp = opendir(folder.c_str());
+        struct dirent * dp;
+        std::vector<std::string> filenames;
+        while ((dp = readdir(dirp)) != NULL) {
+            std::string filename(dp->d_name);
+            if (filename.find("ipt_") != std::string::npos) {
+                std::cout << filename << std::endl;
+                filenames.push_back(filename);
+            }
+        }
+        closedir(dirp);
+
+        // get indices and time samples
+        std::cout << "========== sorted =======" << std::endl;
+        std::vector<int> filenames_inds(filenames.size(), -1);
+        std::size_t n_t = filenames.size();
+        std::vector<double> t_arr(n_t, 0.0);
+        for(int i = 0; i < filenames.size(); ++i) {
+            std::string& name = filenames[i];
+            int ind = std::stoi(name.substr(name.find("_i=") + 3, name.find("_t=") - (name.find("_i=") + 3)));
+            assert(ind >= 0 && ind < n_t);
+            filenames_inds[ind] = i;
+
+            double t = std::stod(name.substr(name.find("_t=") + 3, name.find(".data") - (name.find("_t=") + 3)));
+            t_arr[ind] = t;
+        }
+        for(int i = 0; i < n_t; ++i) {
+            assert(filenames_inds[i] >= 0 && filenames_inds[i] < n_t);
+            std::cout << filenames[filenames_inds[i]] << " ," << t_arr[i] << std::endl;
+        }
+
+        // load interpolator and plot field
+        timeSamples = t_arr;
+        temporalSphInterpolators.clear();
+        for(int i = 0; i < n_t; ++i) {
+            assert(temporalSphInterpolators.size() == i);
+            temporalSphInterpolators.push_back(SpheroidalInterpolator());
+            SpheroidalInterpolator& sphInterp = temporalSphInterpolators[i];
+            sphInterp.ReadMeshFromFile(folder + "/" + filenames[filenames_inds[i]]);
+            sphInterp.SetupMesh();
+            sphInterp.SetupSamples();
+            sphInterp.SetupBsplines();
+
+            /*std::cout << t_arr[i] << "===============================" << std::endl;
+            auto& e_ksi = sphInterp.GetE_ksi();
+            for(int j = 0; j < e_ksi.size(); ++j) {
+                std::cout << e_ksi[j] << std::endl;
+            }*/
+        }
+    }
+
+    auto& GetTemporalSamples() {
+        return timeSamples;
+    }
+
+    auto& GetTemporalFieldInterpolators() {
+        return temporalSphInterpolators;
+    }
+
+    void GetXZGridPointsInSpheroidalCoords(double Dx, double Dz, int nx, int nz,
+                                           std::vector<std::array<double, 3>>& r_pts_sph,
+                                           std::vector<std::array<int, 2>>& r_inds) {
+        double ksi_0 = spheroid_ksi;
+        double a = ellipse_a;
+
+        std::vector<double> x(nx);
+        for(int i = 0; i < nx; ++i) {
+            x[i] = -Dx/2.0 + (double)i * Dx / (nx - 1);
+        }
+
+        std::vector<double> z(nz);
+        for(int i = 0; i < nz; ++i) {
+            z[i] = a - Dz/2.0 + (double)i * Dz / (nz - 1);
+        }
+
+        r_pts_sph.clear();
+        r_inds.clear();
+        double eta, ksi, phi;
+        for(int i = 0; i < nx; ++i) {
+            double x_i = x[i];
+            for(int j = 0; j < nz; ++j) {
+                double z_j = z[j];
+                CoordinatePointTransformRectToSpheroid(x_i, 0.0, z_j, eta, ksi, phi);
+                if( ksi > ksi_0 ) {
+                    r_pts_sph.emplace_back(std::array<double, 3>{eta, ksi, phi});
+                    r_inds.emplace_back(std::array<int, 2>{i, j});
+                }
+            }
+        }
+    }
+
+    void GetTemporalFieldAtGridPoints_SpatialInterpolation(std::vector<std::array<double, 3>>& r_pts_sph,
+                                                           std::vector<std::complex<double>>& e_eta,
+                                                           std::vector<std::complex<double>>& e_ksi,
+                                                           std::vector<std::complex<double>>& e_phi,
+                                                           int timeIndex) {
+        std::vector<bool> mask(r_pts_sph.size(), true);
+        temporalSphInterpolators[timeIndex].InterpolateFieldAtSpheroidalPoints(r_pts_sph, e_eta, e_ksi, e_phi, mask);
+    }
+
+
     private:
     double tipRadius;
     double length;
@@ -847,6 +1037,12 @@ class SpheroidScattering {
     double incidenceAngle;
 
     int numOfHarmonics;
+
+    SpheroidalInterpolator sphInterpolator;
+
+    //temporal analysis
+    std::vector<double> timeSamples;
+    std::vector<SpheroidalInterpolator> temporalSphInterpolators;
 };
 
 #endif

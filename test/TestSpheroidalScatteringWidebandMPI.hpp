@@ -9,6 +9,7 @@
 
 #include <sys/types.h>  // directory check
 #include <sys/stat.h>
+#include <filesystem>
 
 #include "SpheroidScattering.hpp"
 
@@ -63,6 +64,25 @@ void TestSpheroidalScatteringWidebandMPI() {
 
 
     if(processRank == 0) {
+        /*std::filesystem::path folder_path = folder;
+        if ( std::filesystem::exists(folder_path) ) {
+            std::filesystem::remove_all(folder_path);
+            //std::filesystem::remove(folder.c_str());
+        }
+        std::filesystem::create_directories(folder_path);*/
+
+        struct stat info;
+
+        if( stat( folder.c_str(), &info ) != 0 ) {
+            printf( "cannot access %s\n", folder.c_str() );
+        } else if( info.st_mode & S_IFDIR ) {
+            printf( "%s is a directory\n", folder.c_str() );
+            //delete
+            std::string syscommand = std::string("rm ") + folder + "/*";
+            std::system( syscommand.c_str() );
+            std::cout << "content delete!" << std::endl;
+        }
+
         int dir_err = mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
         if (-1 == dir_err)
         {
@@ -129,6 +149,12 @@ void TestSpheroidalScatteringWidebandMPI() {
 
             E_ksi_mesh.WriteToFile(folder + "E_ksi" + fileSuffix + eksi_fileSuffix + ".data");
         }
+
+        std::string interpolator_fileSuffix = std::string("_")                                  \
+                                        + "_i=" + boost::lexical_cast<std::string>(i)           \
+                                        + "_f=" + boost::lexical_cast<std::string>(freq);
+        auto& sphInterpolator = spheroid.GetSpheroidalInterpolator();
+        sphInterpolator.WriteMeshToFile(folder + "interpMesh" + interpolator_fileSuffix + ".data");
 
     }
 

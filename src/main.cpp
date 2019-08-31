@@ -11,7 +11,6 @@
 #include "TestSpheroidalScattering.hpp"
 #include "TestSpheroidalScatteringWidebandMPI.hpp"
 
-
 int main() {
 
     //TestExpansionCoefficients(3, 5, 1.0);
@@ -43,8 +42,10 @@ int main() {
     //std::cout << "Testing spheroidal scattering: " << std::endl;
     //TestSpheroidalScattering();
     //TestSpheroidalScatteringWideband();
-    TestSpheroidalScatteringWidebandMPI();    // bug: the specfun library gives wrong results when optimized
+    //TestSpheroidalScatteringWidebandMPI();    // bug: wrong results when optimized
     //TestSpheroidalScatteringWideband_Threaded(4);
+    //GenerateTemporalInterpolatorFromFrequencyInterpolator("out/R=50_L=300_f0=0.01_f1=3_nf=200");
+    PlotTemporllySavedFields("out/R=50_L=300_f0=0.01_f1=3_nf=200");
 
     //testInterpolation3D();
     //TestSpheroidVectorTransforms();

@@ -11,7 +11,6 @@
 #include <memory>
 #include <fstream>
 
-#include "lapacke.h"
 #include <Eigen/Dense>
 
 //#include <boost/python/numpy.hpp>
@@ -180,6 +179,8 @@ Matrix<T> ReadMatrixFromFile(std::string fileName) {
     return A;
 }
 
+#ifdef _LAPACK_IS_IN_USE_
+#include "lapacke.h"
 
 Matrix<std::complex<double>> SolveLinear(Matrix<std::complex<double>>& A, Matrix<std::complex<double>>& B,
                                         bool useExpertVersion = false) {
@@ -224,13 +225,13 @@ Matrix<std::complex<double>> SolveLinear(Matrix<std::complex<double>>& A, Matrix
         std::cout << " berr : " << berr[0] << std::endl;
         std::cout << " equed : " << equed << std::endl;
 
-        /*
-        std::cout << " ipiv : " << std::endl;
-        int* ipiv_p = ipiv.get();
-        for(int i = 0; i < n_row; ++i) {
-            std::cout << "(" << i + 1 << ", " << ipiv_p[i] << ")  ";
-        }
-        std::cout << std::endl;*/
+
+        //std::cout << " ipiv : " << std::endl;
+        //int* ipiv_p = ipiv.get();
+        //for(int i = 0; i < n_row; ++i) {
+        //    std::cout << "(" << i + 1 << ", " << ipiv_p[i] << ")  ";
+        //}
+        //std::cout << std::endl;
 
         return X;
     } else {
@@ -245,6 +246,8 @@ Matrix<std::complex<double>> SolveLinear(Matrix<std::complex<double>>& A, Matrix
         return X;
     }
 }
+#endif // _LAPACK_IS_IN_USE_
+
 
 Matrix<std::complex<double>> SolveLinear_Ei(Matrix<std::complex<double>>& A, Matrix<std::complex<double>>& B) {
     const int n_row = A.GetNRow();
