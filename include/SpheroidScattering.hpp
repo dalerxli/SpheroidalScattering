@@ -662,7 +662,11 @@ class SpheroidScattering {
         const auto& d = spheroid_d;
         ksi = (std::sqrt(x*x + y*y + (z + d/2)*(z + d/2)) + std::sqrt(x*x + y*y + (z - d/2)*(z - d/2)))/d;
         eta = (std::sqrt(x*x + y*y + (z + d/2)*(z + d/2)) - std::sqrt(x*x + y*y + (z - d/2)*(z - d/2)))/d;
-        phi = std::atan2(y, x);
+        if(x==0.0 && y==0.0){
+            phi = 0.0;
+        } else{
+            phi = std::atan2(y, x);
+        }
     }
 
     static
@@ -796,6 +800,144 @@ class SpheroidScattering {
         double ksi_sq = ksi * ksi;
         double eta_sq = eta * eta;
         return  (spheroid_d / 2.0) * (spheroid_d / 2.0) * std::sqrt((ksi_sq - eta_sq) * (ksi_sq - 1.0));
+    }
+
+    void SubdevideSurface_Cartesian(double eta_min, double max_surface_area,
+                                    std::vector<std::array<double, 3>>& r_pts,
+                                    std::vector<std::array<double, 3>>& normal_vec,
+                                    std::vector<double>& surfaceArea) {
+        // eta_max = 1.0
+        // r_pts: Cartesian coordinates
+        r_pts.clear();
+        normal_vec.clear();
+        surfaceArea.clear();
+
+        // the very top of the tip done separately
+        double ksi_0 = spheroid_ksi;
+        double eta = 1.0;
+        double phi = 0.0;
+        double dphi = 2.0 * M_PI;
+        double dA_detadphi = GetSurfaceElement(eta, phi);
+        double deta = max_surface_area / (dA_detadphi * dphi);
+        double dA = dA_detadphi * deta * dphi;
+
+        double x, y, z;
+        CoordinatePointTransformSpheroidToRect(eta, ksi_0, phi, x, y, z);
+        r_pts.push_back(std::array<double, 3>{x, y, z});
+        normal_vec.push_back(std::array<double, 3>{0.0, 0.0, 1.0});
+        surfaceArea.push_back(dA);
+
+        std::complex<double> e_eta(0.0, 0.0);
+        std::complex<double> e_ksi(1.0, 0.0);
+        std::complex<double> e_phi(0.0, 0.0);
+        std::complex<double> e_x, e_y, e_z;
+
+
+        // The rest of the surface
+        double eta_0, eta_1;
+        double h_eta, h_ksi, h_phi;
+        eta_0 = eta - deta;
+        double d_l = std::sqrt(max_surface_area);
+        while(eta_0 > eta_min) {
+            eta = eta_0;
+            GetCoordinateScaleFactors(eta, ksi_0, phi, h_eta, h_ksi, h_phi);
+            deta = d_l / h_eta;
+            eta = eta_0 - deta/2.0;
+            dphi = d_l / h_phi;
+            int n_phi = M_PI / dphi;
+            if(n_phi < 4)
+                {n_phi = 4;}
+
+            std::cout << "eta: " << eta << " , n_phi: " << n_phi << std::endl;
+            for(int i = 0; i < n_phi; ++i) {
+                phi = (double)i / n_phi * 2.0*M_PI;
+
+                dA = GetSurfaceElement(eta, phi) * deta * dphi;
+                CoordinatePointTransformSpheroidToRect(eta, ksi_0, phi, x, y, z);
+                VectorTransformFromSpheroidToRect(eta, ksi_0, phi,
+                                                  e_eta, e_ksi, e_phi,
+                                                  e_x, e_y, e_z
+                                                  );
+                r_pts.push_back(std::array<double, 3>{x, y, z});
+                normal_vec.push_back(std::array<double, 3>{std::real(e_x), std::real(e_y), std::real(e_z)});
+                surfaceArea.push_back(dA);
+            }
+
+            eta_0 -= deta;
+        }
+    }
+
+    void SubdevideSurface_Cartesian(double eta_min, double max_surface_area,
+                                    std::vector<std::array<double, 3>>& r_pts_cart,
+                                    std::vector<std::array<double, 3>>& r_pts_sph,
+                                    std::vector<std::array<double, 3>>& normal_vec_cart,
+                                    std::vector<std::array<double, 3>>& normal_vec_sph,
+                                    std::vector<double>& surfaceArea) {
+        // eta_max = 1.0
+        // r_pts: Cartesian coordinates
+        r_pts_cart.clear();
+        r_pts_sph.clear();
+        normal_vec_cart.clear();
+        normal_vec_sph.clear();
+        surfaceArea.clear();
+
+        // the very top of the tip done separately
+        double ksi_0 = spheroid_ksi;
+        double eta = 1.0;
+        double phi = 0.0;
+        double dphi = 2.0 * M_PI;
+        double dA_detadphi = GetSurfaceElement(eta, phi);
+        double deta = max_surface_area / (dA_detadphi * dphi);
+        double dA = dA_detadphi * deta * dphi;
+
+        double x, y, z;
+        CoordinatePointTransformSpheroidToRect(eta, ksi_0, phi, x, y, z);
+        r_pts_cart.push_back(std::array<double, 3>{x, y, z});
+        r_pts_sph.push_back(std::array<double, 3>{eta, ksi_0, phi});
+        normal_vec_cart.push_back(std::array<double, 3>{0.0, 0.0, 1.0});
+        normal_vec_sph.push_back(std::array<double, 3>{0.0, 1.0, 0.0});
+        surfaceArea.push_back(dA);
+
+        std::complex<double> e_eta(0.0, 0.0);
+        std::complex<double> e_ksi(1.0, 0.0);
+        std::complex<double> e_phi(0.0, 0.0);
+        std::complex<double> e_x, e_y, e_z;
+
+
+        // The rest of the surface
+        double eta_0, eta_1;
+        double h_eta, h_ksi, h_phi;
+        eta_0 = eta - deta;
+        double d_l = std::sqrt(max_surface_area);
+        while(eta_0 > eta_min) {
+            eta = eta_0;
+            GetCoordinateScaleFactors(eta, ksi_0, phi, h_eta, h_ksi, h_phi);
+            deta = d_l / h_eta;
+            eta = eta_0 - deta/2.0;
+            dphi = d_l / h_phi;
+            int n_phi = M_PI / dphi;
+            if(n_phi < 4)
+                {n_phi = 4;}
+
+            std::cout << "eta: " << eta << " , n_phi: " << n_phi << std::endl;
+            for(int i = 0; i < n_phi; ++i) {
+                phi = (double)i / n_phi * 2.0*M_PI;
+
+                dA = GetSurfaceElement(eta, phi) * deta * dphi;
+                CoordinatePointTransformSpheroidToRect(eta, ksi_0, phi, x, y, z);
+                VectorTransformFromSpheroidToRect(eta, ksi_0, phi,
+                                                  e_eta, e_ksi, e_phi,
+                                                  e_x, e_y, e_z
+                                                  );
+                r_pts_cart.push_back(std::array<double, 3>{x, y, z});
+                r_pts_sph.push_back(std::array<double, 3>{eta, ksi_0, phi});
+                normal_vec_cart.push_back(std::array<double, 3>{std::real(e_x), std::real(e_y), std::real(e_z)});
+                normal_vec_sph.push_back(std::array<double, 3>{0.0, 1.0, 0.0});
+                surfaceArea.push_back(dA);
+            }
+
+            eta_0 -= deta;
+        }
     }
 
     auto GetFieldAroundTipAtXZPlane(double Dx, double Dz, int nx, int nz,

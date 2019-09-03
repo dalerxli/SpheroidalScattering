@@ -10,6 +10,7 @@
 #include "TestInterpolation.hpp"
 #include "TestSpheroidalScattering.hpp"
 #include "TestSpheroidalScatteringWidebandMPI.hpp"
+#include "Test_Fowler_Nordheim.hpp"
 
 int main() {
 
@@ -45,7 +46,9 @@ int main() {
     //TestSpheroidalScatteringWidebandMPI();    // bug: wrong results when optimized
     //TestSpheroidalScatteringWideband_Threaded(4);
     //GenerateTemporalInterpolatorFromFrequencyInterpolator("out/R=50_L=300_f0=0.01_f1=3_nf=200");
-    PlotTemporllySavedFields("out/R=50_L=300_f0=0.01_f1=3_nf=200");
+    //PlotTemporllySavedFields("out/R=50_L=300_f0=0.01_f1=3_nf=200");
+    //test_Fowler_Nordheim();
+    TestSpheroidalScattering_Emission("out/R=50_L=300_f0=0.01_f1=3_nf=200");
 
     //testInterpolation3D();
     //TestSpheroidVectorTransforms();

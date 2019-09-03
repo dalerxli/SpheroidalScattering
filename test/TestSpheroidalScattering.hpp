@@ -524,13 +524,70 @@ void PlotTemporllySavedFields(std::string folder) {
         std::string mat_fileSuffix = std::string("_")                          \
                                 + "_i=" + boost::lexical_cast<std::string>(i)           \
                                 + "_t=" + boost::lexical_cast<std::string>(t_arr[i])
+                                + "_nx=" + boost::lexical_cast<std::string>(nx)
+                                + "_nz=" + boost::lexical_cast<std::string>(nz)
+                                + "_Dx=" + boost::lexical_cast<std::string>(Dx)
+                                + "_Dz=" + boost::lexical_cast<std::string>(Dz)
                                 + ".data";
 
         e_x_mat.WriteToFile(folder + "/" + "e_x" + mat_fileSuffix);
         e_y_mat.WriteToFile(folder + "/" + "e_y" + mat_fileSuffix);
         e_z_mat.WriteToFile(folder + "/" + "e_z" + mat_fileSuffix);
     }
+}
 
+#include "FowlerNordheimEmission.hpp"
+
+void TestSpheroidalScattering_Emission(std::string folder) {
+    double tipRadius= std::stod(folder.substr(folder.find("R=") + 2, folder.find("L=_") - (folder.find("R=") + 2))) * 1.0e-9;
+    double length = std::stod(folder.substr(folder.find("_L=") + 3, folder.find("f0=_") - (folder.find("_L=") + 3))) * 1.0e-6;
+    SpheroidScattering spheroid(tipRadius, length);
+    spheroid.SetTemporalFieldInterpolators(folder);
+
+    auto& t_arr = spheroid.GetTemporalSamples();
+    int n_t = t_arr.size();
+
+    double eta_min, _ksi_, _phi_;
+    spheroid.CoordinatePointTransformRectToSpheroid(0.0, 0.0, length/2.0 - 2.0*tipRadius,
+                                                    eta_min, _ksi_, _phi_);
+    std::cout << "eta_min : " << eta_min << std::endl;
+
+    double max_surface_area = (5.0*1.0e-9) * (5.0*1.0e-9);
+    std::vector<std::array<double, 3>> r_pts_cart;
+    std::vector<std::array<double, 3>> r_pts_sph;
+    std::vector<std::array<double, 3>> normal_vec_cart;
+    std::vector<std::array<double, 3>> normal_vec_sph;
+    std::vector<double> surfaceArea;
+    spheroid.SubdevideSurface_Cartesian(eta_min, max_surface_area, r_pts_cart, r_pts_sph, normal_vec_cart, normal_vec_sph, surfaceArea);
+
+    std::size_t n_patch = r_pts_cart.size();
+    assert(r_pts_sph.size() == n_patch && normal_vec_cart.size() == n_patch
+           && normal_vec_sph.size() == n_patch && surfaceArea.size() == n_patch);
+
+    std::vector<double> n_particles(n_patch, 0.0);
+    std::vector<std::complex<double>> e_eta, e_ksi, e_phi;
+
+    double eField_si = 3.0e7; // v/m
+    double workFunction_eV = 4.5;
+
+    for(int i = 1; i < n_t; ++i) {
+        spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta, e_ksi, e_phi, i);
+
+        for(int j = 0; j < n_patch; ++j) {
+            double e_normal = eField_si*std::real(e_ksi[j]);
+
+            if (e_normal < 0.0) {
+                FowlerNordheimEmission fn(std::abs(e_normal), workFunction_eV);
+
+                double n_elec = fn.GetNumberOfEmittedElectrons(surfaceArea[j], t_arr[i] - t_arr[i - 1]);
+                n_particles[j] += n_elec;
+            }
+        }
+    }
+
+    for(int j = 0; j < n_patch; ++j) {
+        std::cout << j << "  - n_e: " << n_particles[j] << std::endl;
+    }
 
 }
 
