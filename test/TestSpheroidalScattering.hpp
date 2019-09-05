@@ -537,61 +537,60 @@ void PlotTemporllySavedFields(std::string folder) {
 }
 
 #include "FowlerNordheimEmission.hpp"
+#include "TipEmission.hpp"
+#include "ChargedParticleTracer.hpp"
 
 void TestSpheroidalScattering_Emission(std::string folder) {
-    double tipRadius= std::stod(folder.substr(folder.find("R=") + 2, folder.find("L=_") - (folder.find("R=") + 2))) * 1.0e-9;
-    double length = std::stod(folder.substr(folder.find("_L=") + 3, folder.find("f0=_") - (folder.find("_L=") + 3))) * 1.0e-6;
-    SpheroidScattering spheroid(tipRadius, length);
-    spheroid.SetTemporalFieldInterpolators(folder);
+    TipEmission emitter(folder);
+    emitter.SetElectricFieldAmplitude(-3.0e7);
+    emitter.SetMetalWorkFunction(4.5);
+    double max_patch_area = (5.0*1.0e-9) * (5.0*1.0e-9);
+    emitter.SubdevideSurface( 1.5 * emitter.GetSpheroid().GetTipRadius(), max_patch_area);
+    auto n_particles = emitter.GetTotalNumberOfEmittedParticles();
 
-    auto& t_arr = spheroid.GetTemporalSamples();
-    int n_t = t_arr.size();
+    int n_total = 0;
+    for(int j = 0; j < n_particles.size(); ++j) {
+        n_total += n_particles[j];
+        std::cout << j << "  - n_e: " << n_particles[j] << std::endl;
+    }
+    std::cout << "n_total : " << n_total << std::endl;
 
-    double eta_min, _ksi_, _phi_;
-    spheroid.CoordinatePointTransformRectToSpheroid(0.0, 0.0, length/2.0 - 2.0*tipRadius,
-                                                    eta_min, _ksi_, _phi_);
-    std::cout << "eta_min : " << eta_min << std::endl;
+    int n_t = emitter.GetTimeSamples().size();
+    for(int i = 0; i < n_t; ++i) {
+        auto n_e = emitter.GetNumberOfEmittedParticles(i);
+        std::cout << i << " - n_e(t) " << n_e[0] << std::endl;
+    }
 
-    double max_surface_area = (5.0*1.0e-9) * (5.0*1.0e-9);
-    std::vector<std::array<double, 3>> r_pts_cart;
-    std::vector<std::array<double, 3>> r_pts_sph;
-    std::vector<std::array<double, 3>> normal_vec_cart;
-    std::vector<std::array<double, 3>> normal_vec_sph;
-    std::vector<double> surfaceArea;
-    spheroid.SubdevideSurface_Cartesian(eta_min, max_surface_area, r_pts_cart, r_pts_sph, normal_vec_cart, normal_vec_sph, surfaceArea);
+    auto& emissionPoints = emitter.GetEmissionPoints();
+    auto& emissionPtNormals = emitter.GetEmissionPointNormals();
+    auto& eFieldNormals = emitter.GetNormalEFields();
+    auto& t_arr = emitter.GetTimeSamples();
+    double vf = 1.0e4;
+    double elec_charge = -PhysicalConstants_SI::electronCharge;
 
-    std::size_t n_patch = r_pts_cart.size();
-    assert(r_pts_sph.size() == n_patch && normal_vec_cart.size() == n_patch
-           && normal_vec_sph.size() == n_patch && surfaceArea.size() == n_patch);
+    ChargedParticleTracer etracer;
+    etracer.ReserveMemory(n_total);
+    for(int i = 0; i < n_t; ++i) {
+        auto n_e = emitter.GetNumberOfEmittedParticles(i);
+        std::cout << i << " ";
+        for(int j = 0; j < n_e.size(); ++j) {
+            auto& a_n = emissionPtNormals[j];
+            auto ej = eFieldNormals[j];
+            std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
+            std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
+            etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
+                                v0_e, f0_e);
+        }
 
-    std::vector<double> n_particles(n_patch, 0.0);
-    std::vector<std::complex<double>> e_eta, e_ksi, e_phi;
-
-    double eField_si = 3.0e7; // v/m
-    double workFunction_eV = 4.5;
-
-    for(int i = 1; i < n_t; ++i) {
-        spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta, e_ksi, e_phi, i);
-
-        for(int j = 0; j < n_patch; ++j) {
-            double e_normal = eField_si*std::real(e_ksi[j]);
-
-            if (e_normal < 0.0) {
-                FowlerNordheimEmission fn(std::abs(e_normal), workFunction_eV);
-
-                double n_elec = fn.GetNumberOfEmittedElectrons(surfaceArea[j], t_arr[i] - t_arr[i - 1]);
-                n_particles[j] += n_elec;
-            }
+        if(i > 0) {
+            double dt = t_arr[i] - t_arr[i - 1];
+            emitter.GetElectricForce(etracer.GetCharges(), etracer.GetPositions(), etracer.GetForces(), i);
+            etracer.UpdateParticles(dt);
         }
     }
 
-    for(int j = 0; j < n_patch; ++j) {
-        std::cout << j << "  - n_e: " << n_particles[j] << std::endl;
-    }
 
 }
-
-
 
 
 

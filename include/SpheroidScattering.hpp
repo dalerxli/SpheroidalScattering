@@ -21,6 +21,10 @@ constexpr double speedOfLight = 2.99792458e8;    // m/s
 
 class SpheroidScattering {
     public:
+    SpheroidScattering() {
+        std::cout << "Spheroid not initialized" << std::endl;
+    }
+
     SpheroidScattering(double tip_radius, double ellipsod_length) {
         tipRadius = tip_radius;
         length = ellipsod_length;
@@ -69,6 +73,14 @@ class SpheroidScattering {
 
     void SetNumberOfHarmonics(int n_max) {
         numOfHarmonics = n_max;
+    }
+
+    double GetTipRadius() {
+        return tipRadius;
+    }
+
+    double GetLength() {
+        return length;
     }
 
     void Map2DIndexTo1D(const int m_0, const int m_1, const int ind_start,
