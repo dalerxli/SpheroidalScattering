@@ -123,6 +123,17 @@ public:
         return n_particles;
     }
 
+    void AddNumberOfEmittedParticles(int timeInd, std::vector<double>& n_e) {
+        auto n_emission = GetNumberOfEmittedParticles(timeInd);
+        if(n_e.size() != n_emission.size()) {
+            n_e.resize(n_emission.size(), 0.0);
+        }
+
+        for(std::size_t i = 0; i < n_emission.size(); ++i) {
+            n_e[i] += n_emission[i];
+        }
+    }
+
     auto& GetEmissionPoints() {
         return r_pts_cart;
     }
@@ -157,11 +168,10 @@ public:
                                                                   e_x_pts, e_y_pts, e_z_pts);
 
        forces.resize(n_pts);
-       double e_charge = -PhysicalConstants_SI::electronCharge;
        for(std::size_t i = 0; i < n_pts; ++i) {
-            forces[i] = std::array<double, 3>{e_charge * std::real(e_x_pts[i]),
-                                              e_charge * std::real(e_y_pts[i]),
-                                              e_charge * std::real(e_z_pts[i])};
+            forces[i] = std::array<double, 3>{charges[i] * eField_si * std::real(e_x_pts[i]),
+                                              charges[i] * eField_si * std::real(e_y_pts[i]),
+                                              charges[i] * eField_si * std::real(e_z_pts[i])};
        }
     }
 

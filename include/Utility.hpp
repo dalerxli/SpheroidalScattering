@@ -6,6 +6,10 @@
 #include <fstream>
 #include <iostream>
 
+#include <sys/types.h>  // directory check
+#include <sys/stat.h>
+#include <dirent.h>
+
 #include <boost/algorithm/string.hpp>
 
 /*
@@ -99,6 +103,28 @@ void GetFourierTransform(std::vector<double>& t, std::vector<double>& e_t,
     }
 }
 
+void CreateFolderIfItDoesNotExists(std::string folder, bool delete_content = false) {
+    struct stat info;
+
+    if( stat( folder.c_str(), &info ) != 0 ) {
+        //printf( "cannot access %s\n", folder.c_str() ); // no such directory
+
+        int dir_err = mkdir(folder.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        if (-1 == dir_err) {
+            printf("Error creating directory %s!\n", folder.c_str());
+        } else {
+            printf("Created directory %s!\n", folder.c_str());
+        }
+    } else if( info.st_mode & S_IFDIR ) {
+        printf( "%s is a directory\n", folder.c_str() );
+        //delete
+        if(delete_content) {
+            std::string syscommand = std::string("rm ") + folder + "/*";
+            std::system( syscommand.c_str() );
+            std::cout << "content delete!" << std::endl;
+        }
+    }
+}
 
 
 #endif // __UTILITY_HPP_

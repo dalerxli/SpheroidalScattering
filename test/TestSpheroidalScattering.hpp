@@ -568,18 +568,25 @@ void TestSpheroidalScattering_Emission(std::string folder) {
     double vf = 1.0e4;
     double elec_charge = -PhysicalConstants_SI::electronCharge;
 
+    std::string particle_folder = folder + "/particles";
+    CreateFolderIfItDoesNotExists(particle_folder);
+
     ChargedParticleTracer etracer;
     etracer.ReserveMemory(n_total);
+    std::vector<double> n_e(emissionPoints.size());
     for(int i = 0; i < n_t; ++i) {
-        auto n_e = emitter.GetNumberOfEmittedParticles(i);
-        std::cout << i << " ";
+        emitter.AddNumberOfEmittedParticles(i, n_e);
+        std::cout << i << std::endl;
         for(int j = 0; j < n_e.size(); ++j) {
-            auto& a_n = emissionPtNormals[j];
-            auto ej = eFieldNormals[j];
-            std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
-            std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
-            etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
-                                v0_e, f0_e);
+            if(n_e[j] > 1.0) {
+                auto& a_n = emissionPtNormals[j];
+                auto ej = eFieldNormals[j];
+                std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
+                std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
+                etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
+                                    v0_e, f0_e);
+                n_e[j] = 0.0;
+            }
         }
 
         if(i > 0) {
@@ -587,9 +594,8 @@ void TestSpheroidalScattering_Emission(std::string folder) {
             emitter.GetElectricForce(etracer.GetCharges(), etracer.GetPositions(), etracer.GetForces(), i);
             etracer.UpdateParticles(dt);
         }
+        etracer.SaveData(particle_folder, i, t_arr[i]);
     }
-
-
 }
 
 

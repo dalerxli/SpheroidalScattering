@@ -521,7 +521,7 @@ class SpheroidScattering {
         double eta_0 = (ellipse_a - 2.5*tipRadius) / (spheroid_d/2);
         double eta_1 = 1.0;
         double ksi_0 = spheroid_ksi;
-        double ksi_1 = (ellipse_a + 2.5*tipRadius) / (spheroid_d/2);
+        double ksi_1 = (ellipse_a + 10.5*tipRadius) / (spheroid_d/2);
         double phi_0 = 0.0;
         double phi_1 = 2.0 * M_PI;
 
@@ -532,7 +532,7 @@ class SpheroidScattering {
                                                                  std::pair<double, double>(ksi_0, ksi_1),
                                                                  std::pair<double, double>(phi_0, phi_1)};
 
-        std::array<std::size_t, 3> numOfSampls = {5, 5, 5};
+        std::array<std::size_t, 3> numOfSampls = {5, 10, 10};
 
         auto sphInterpolator = GetFieldInterpolator(alpha, beta, gamma, coord_limits, numOfSampls);
 

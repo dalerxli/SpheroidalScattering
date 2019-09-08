@@ -23,10 +23,10 @@ public:
                      const std::array<double, 3>& velocity,
                      const std::array<double, 3>& force) {
         double velocitySquared = velocity[0]*velocity[0] + velocity[1]*velocity[1] + velocity[2]*velocity[2];
-        double gamma = 1.0/std::sqrt(1 - velocitySquared);
+        double gamma = 1.0/std::sqrt(1 - velocitySquared/c_squared);
         std::array<double, 3> momentum{gamma*mass*velocity[0],
-                                         gamma*mass*velocity[1],
-                                         gamma*mass*velocity[2]};
+                                       gamma*mass*velocity[1],
+                                       gamma*mass*velocity[2]};
         charges.push_back(charge);
         masses.push_back(mass);
         positions.push_back(position);
@@ -46,7 +46,8 @@ public:
             double mSquared = masses[i]*masses[i];
             double pSquared = p[0]*p[0] + p[1]*p[1] + p[2]*p[2];
             std::array<double, 3>& v = velocities[i];
-            double mRel = std::sqrt(mSquared + pSquared);
+            double mRel = std::sqrt(mSquared + pSquared/c_squared);
+            //mRel = masses[i];
             v[0] = p[0]/mRel;
             v[1] = p[1]/mRel;
             v[2] = p[2]/mRel;
@@ -68,6 +69,36 @@ public:
         UpdateParticlesPositions(dt);
     }
 
+    void SaveData(std::string folder, int timeInd, double time) {
+        std::string fileSuffix = std::string("_")                                  \
+                                 + "_i=" + boost::lexical_cast<std::string>(timeInd)           \
+                                 + "_t=" + boost::lexical_cast<std::string>(time);
+
+        std::string fileName = folder + "/" + "masscharge" + fileSuffix;
+        std::ofstream fileOut(fileName.c_str(), std::ios::out | std::ios::binary);
+        assert(fileOut.is_open());
+
+        fileOut.write((char*)(masses.data()), masses.size() * sizeof(double));
+        fileOut.write((char*)(charges.data()), charges.size() * sizeof(double));
+        fileOut.close();
+
+        std::string fileName_p = folder + "/" + "posvelmom" + fileSuffix;
+        std::ofstream fileOut_p(fileName_p.c_str(), std::ios::out | std::ios::binary);
+        assert(fileOut_p.is_open());
+
+        for (int i = 0; i < positions.size(); ++i) {
+            fileOut_p.write((char*)(&(positions[i][0])), 3 * sizeof(double));
+        }
+        for (int i = 0; i < velocities.size(); ++i) {
+            fileOut_p.write((char*)(&(velocities[i][0])), 3 * sizeof(double));
+        }
+        for (int i = 0; i < momentums.size(); ++i) {
+            fileOut_p.write((char*)(&(momentums[i][0])), 3 * sizeof(double));
+        }
+        fileOut_p.close();
+
+    }
+
 
     auto& GetMasses() {return masses;}
     auto& GetCharges() {return charges;}
@@ -77,6 +108,7 @@ public:
     auto& GetForces() {return forces;}
 
 private:
+    double c_squared = PhysicalConstants_SI::speedOfLight * PhysicalConstants_SI::speedOfLight;
     std::vector<double> masses;
     std::vector<double> charges;
     std::vector<std::array<double, 3>> positions;
