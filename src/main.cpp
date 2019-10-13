@@ -48,7 +48,8 @@ int main() {
     //GenerateTemporalInterpolatorFromFrequencyInterpolator("out/R=50_L=300_f0=0.01_f1=3_nf=200");
     //PlotTemporllySavedFields("out/R=50_L=300_f0=0.01_f1=3_nf=200");
     //test_Fowler_Nordheim();
-    TestSpheroidalScattering_Emission("out/R=50_L=300_f0=0.01_f1=3_nf=200");
+    //TestSpheroidalScattering_Emission("out/R=50_L=300_f0=0.01_f1=3_nf=200");
+    TestSpheroidalScattering_Emission_MPI("out/R=50_L=300_f0=0.01_f1=3_nf=200");
 
     //testInterpolation3D();
     //TestSpheroidVectorTransforms();

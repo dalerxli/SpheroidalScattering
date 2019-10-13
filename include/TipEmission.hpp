@@ -87,7 +87,7 @@ public:
         return n_particles;
     }
 
-    auto GetNumberOfEmittedParticles(int timeInd) {
+    auto GetNumberOfEmittedParticles(int timeInd, int subTimeInd=0, int n_dt_subdivisions=1) {
         auto& t_arr = GetTimeSamples();
         int n_t = t_arr.size();
 
@@ -106,7 +106,31 @@ public:
         assert(timeInd >= 1);
         int i = timeInd;
 
-        spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta, e_ksi, e_phi, i);
+        double dt = -1.0;
+
+        if  (n_dt_subdivisions <= 1 || timeInd>=spheroid.GetTemporalSamples().size()-1) {
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta, e_ksi, e_phi, i);
+            dt = t_arr[i] - t_arr[i - 1];
+        } else {
+            std::vector<std::complex<double>> e_eta_0, e_ksi_0, e_phi_0;
+            std::vector<std::complex<double>> e_eta_1, e_ksi_1, e_phi_1;
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta_0, e_ksi_0, e_phi_0, i);
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(r_pts_sph, e_eta_1, e_ksi_1, e_phi_1, i + 1);
+
+            double alpha = subTimeInd/n_dt_subdivisions;
+            e_eta.resize(n_patch);
+            e_ksi.resize(n_patch);
+            e_phi.resize(n_patch);
+            for(std::size_t j = 0; j < n_patch; ++j) {
+                e_eta[j] = alpha*e_eta_0[j] + (1.0 - alpha)*e_eta_1[j];
+                e_ksi[j] = alpha*e_ksi_0[j] + (1.0 - alpha)*e_ksi_1[j];
+                e_phi[j] = alpha*e_phi_0[j] + (1.0 - alpha)*e_phi_1[j];
+            }
+
+            dt = (t_arr[i] - t_arr[i - 1]) / n_dt_subdivisions;
+        }
+        assert(dt >= 0.0);
+
         for(int j = 0; j < n_patch; ++j) {
             double e_normal = eField_si*std::real(e_ksi[j]);
             eFieldNormal[j] = e_normal;
@@ -114,17 +138,18 @@ public:
             if (e_normal < 0.0) {
                 FowlerNordheimEmission fn(std::abs(e_normal), workFunction_eV);
 
-                double n_elec = fn.GetNumberOfEmittedElectrons(surfaceArea[j], t_arr[i] - t_arr[i - 1]);
+                double n_elec = fn.GetNumberOfEmittedElectrons(surfaceArea[j], dt);
                 n_particles[j] += n_elec;
             }
         }
 
 
+
         return n_particles;
     }
 
-    void AddNumberOfEmittedParticles(int timeInd, std::vector<double>& n_e) {
-        auto n_emission = GetNumberOfEmittedParticles(timeInd);
+    void AddNumberOfEmittedParticles(int timeInd, std::vector<double>& n_e, int subTimeInd=0, int n_dt_subdivisions=1) {
+        auto n_emission = GetNumberOfEmittedParticles(timeInd, subTimeInd, n_dt_subdivisions);
         if(n_e.size() != n_emission.size()) {
             n_e.resize(n_emission.size(), 0.0);
         }
@@ -147,7 +172,8 @@ public:
     }
 
     void GetElectricForce(std::vector<double>& charges, std::vector<std::array<double, 3>>& positions,
-                          std::vector<std::array<double, 3>>& forces, int timeInd) {
+                          std::vector<std::array<double, 3>>& forces, int timeInd,
+                          int subTimeInd=0, int n_dt_subdivisions=1) {
         std::size_t n_pts = charges.size();
         assert(positions.size() == n_pts);
         std::vector<std::array<double, 3>> positions_sph(n_pts);
@@ -158,21 +184,61 @@ public:
             spheroid.CoordinatePointTransformRectToSpheroid(r_i[0], r_i[1], r_i[2], r_i_sph[0], r_i_sph[1], r_i_sph[2]);
         }
 
-        std::vector<std::complex<double>> e_eta, e_ksi, e_phi;
-        spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(positions_sph, e_eta, e_ksi, e_phi, timeInd);
+        if  (n_dt_subdivisions <= 1 || timeInd>=spheroid.GetTemporalSamples().size()-1) {
+            std::vector<std::complex<double>> e_eta, e_ksi, e_phi;
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(positions_sph, e_eta, e_ksi, e_phi, timeInd);
 
-        std::vector<std::complex<double>> e_x_pts;
-        std::vector<std::complex<double>> e_y_pts;
-        std::vector<std::complex<double>> e_z_pts;
-        spheroid.VectorTransformFromSpheroidToRect(positions_sph, e_eta, e_ksi, e_phi,
-                                                                  e_x_pts, e_y_pts, e_z_pts);
+            std::vector<std::complex<double>> e_x_pts;
+            std::vector<std::complex<double>> e_y_pts;
+            std::vector<std::complex<double>> e_z_pts;
+            spheroid.VectorTransformFromSpheroidToRect(positions_sph, e_eta, e_ksi, e_phi,
+                                                                      e_x_pts, e_y_pts, e_z_pts);
 
-       forces.resize(n_pts);
-       for(std::size_t i = 0; i < n_pts; ++i) {
-            forces[i] = std::array<double, 3>{charges[i] * eField_si * std::real(e_x_pts[i]),
-                                              charges[i] * eField_si * std::real(e_y_pts[i]),
-                                              charges[i] * eField_si * std::real(e_z_pts[i])};
-       }
+            forces.resize(n_pts);
+            for(std::size_t i = 0; i < n_pts; ++i) {
+                forces[i] = std::array<double, 3>{charges[i] * eField_si * std::real(e_x_pts[i]),
+                                                  charges[i] * eField_si * std::real(e_y_pts[i]),
+                                                  charges[i] * eField_si * std::real(e_z_pts[i])};
+            }
+        } else {
+            std::vector<std::complex<double>> e_eta_0, e_ksi_0, e_phi_0;
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(positions_sph, e_eta_0, e_ksi_0, e_phi_0, timeInd);
+            std::vector<std::complex<double>> e_eta_1, e_ksi_1, e_phi_1;
+            spheroid.GetTemporalFieldAtGridPoints_SpatialInterpolation(positions_sph, e_eta_1, e_ksi_1, e_phi_1, timeInd + 1);
+
+            std::vector<std::complex<double>> e_x_pts_0;
+            std::vector<std::complex<double>> e_y_pts_0;
+            std::vector<std::complex<double>> e_z_pts_0;
+            spheroid.VectorTransformFromSpheroidToRect(positions_sph, e_eta_0, e_ksi_0, e_phi_0,
+                                                                      e_x_pts_0, e_y_pts_0, e_z_pts_0);
+
+            std::vector<std::complex<double>> e_x_pts_1;
+            std::vector<std::complex<double>> e_y_pts_1;
+            std::vector<std::complex<double>> e_z_pts_1;
+            spheroid.VectorTransformFromSpheroidToRect(positions_sph, e_eta_1, e_ksi_1, e_phi_1,
+                                                                      e_x_pts_1, e_y_pts_1, e_z_pts_1);
+
+
+            std::vector<std::complex<double>> e_x_pts(n_pts);
+            std::vector<std::complex<double>> e_y_pts(n_pts);
+            std::vector<std::complex<double>> e_z_pts(n_pts);
+
+            assert(subTimeInd >= 0 && subTimeInd < n_dt_subdivisions);
+            double alpha = subTimeInd/n_dt_subdivisions;
+            for(std::size_t i = 0; i < n_pts; ++i) {
+                e_x_pts[i] = (1.0 - alpha)*e_x_pts_0[i] + alpha*e_x_pts_1[i];
+                e_y_pts[i] = (1.0 - alpha)*e_y_pts_0[i] + alpha*e_y_pts_1[i];
+                e_z_pts[i] = (1.0 - alpha)*e_z_pts_0[i] + alpha*e_z_pts_1[i];
+            }
+
+            forces.resize(n_pts);
+            for(std::size_t i = 0; i < n_pts; ++i) {
+                forces[i] = std::array<double, 3>{charges[i] * eField_si * std::real(e_x_pts[i]),
+                                                  charges[i] * eField_si * std::real(e_y_pts[i]),
+                                                  charges[i] * eField_si * std::real(e_z_pts[i])};
+            }
+
+        }
     }
 
 private:

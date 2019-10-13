@@ -69,12 +69,15 @@ public:
         UpdateParticlesPositions(dt);
     }
 
-    void SaveData(std::string folder, int timeInd, double time) {
+    void SaveData(std::string folder, int timeInd, double time,
+                  std::string filename_masscharge="masscharge",
+                  std::string filename_position_velocity_momentum="posvelmom"
+                  ) {
         std::string fileSuffix = std::string("_")                                  \
                                  + "_i=" + boost::lexical_cast<std::string>(timeInd)           \
                                  + "_t=" + boost::lexical_cast<std::string>(time);
 
-        std::string fileName = folder + "/" + "masscharge" + fileSuffix;
+        std::string fileName = folder + "/" + filename_masscharge + fileSuffix;
         std::ofstream fileOut(fileName.c_str(), std::ios::out | std::ios::binary);
         assert(fileOut.is_open());
 
@@ -82,7 +85,7 @@ public:
         fileOut.write((char*)(charges.data()), charges.size() * sizeof(double));
         fileOut.close();
 
-        std::string fileName_p = folder + "/" + "posvelmom" + fileSuffix;
+        std::string fileName_p = folder + "/" + filename_position_velocity_momentum + fileSuffix;
         std::ofstream fileOut_p(fileName_p.c_str(), std::ios::out | std::ios::binary);
         assert(fileOut_p.is_open());
 

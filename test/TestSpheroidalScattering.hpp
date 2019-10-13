@@ -8,7 +8,7 @@
 
 #include <sys/types.h>  // directory check
 #include <sys/stat.h>
-#include <filesystem>
+//#include <filesystem>
 
 #include "SpheroidScattering.hpp"
 
@@ -50,10 +50,10 @@ void TestSpheroidVectorTransforms() {
 
 void TestSpheroidalScattering() {
     double tipRadius= 50.0 * 1.0e-9;
-    double length = 900.0 * 1.0e-6;
-    double freq = 1.0 * 1.0e12;
+    double length = 1500.0 * 1.0e-6;
+    double freq = 3.0 * 1.0e12;
 
-    int N_t = (int)(freq/speedOfLight*length*3.0 + 4);
+    int N_t = (int)(freq/speedOfLight*length*4.0 + 4);
 
     SpheroidScattering spheroid(tipRadius, length);
     spheroid.SetFrequency(freq);
@@ -69,7 +69,7 @@ void TestSpheroidalScattering() {
 
     std::cout << "tip_field: " << tip_field << std::endl;
 
-    bool plotFields = true;
+    bool plotFields = false;
     if(plotFields) {
         double Dx = 4.0*tipRadius;
         double Dz = 4.0*tipRadius;
@@ -78,6 +78,8 @@ void TestSpheroidalScattering() {
         auto E_ksi_mesh = spheroid.GetFieldAroundTipAtXZPlane(Dx, Dz, nx, nz, alpha, beta, gamma);
 
         E_ksi_mesh.WriteToFile("out/E_ksi.data");
+    } else {
+        //spheroid.SetupFieldInterpolator(alpha, beta, gamma);
     }
 }
 
@@ -542,7 +544,7 @@ void PlotTemporllySavedFields(std::string folder) {
 
 void TestSpheroidalScattering_Emission(std::string folder) {
     TipEmission emitter(folder);
-    emitter.SetElectricFieldAmplitude(-3.0e7);
+    emitter.SetElectricFieldAmplitude(-2.0e7);
     emitter.SetMetalWorkFunction(4.5);
     double max_patch_area = (5.0*1.0e-9) * (5.0*1.0e-9);
     emitter.SubdevideSurface( 1.5 * emitter.GetSpheroid().GetTipRadius(), max_patch_area);
@@ -569,30 +571,35 @@ void TestSpheroidalScattering_Emission(std::string folder) {
     double elec_charge = -PhysicalConstants_SI::electronCharge;
 
     std::string particle_folder = folder + "/particles";
-    CreateFolderIfItDoesNotExists(particle_folder);
+    CreateFolderIfItDoesNotExists(particle_folder, true /*delete_content*/);
 
     ChargedParticleTracer etracer;
     etracer.ReserveMemory(n_total);
     std::vector<double> n_e(emissionPoints.size());
-    for(int i = 0; i < n_t; ++i) {
-        emitter.AddNumberOfEmittedParticles(i, n_e);
-        std::cout << i << std::endl;
-        for(int j = 0; j < n_e.size(); ++j) {
-            if(n_e[j] > 1.0) {
-                auto& a_n = emissionPtNormals[j];
-                auto ej = eFieldNormals[j];
-                std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
-                std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
-                etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
-                                    v0_e, f0_e);
-                n_e[j] = 0.0;
-            }
-        }
 
-        if(i > 0) {
-            double dt = t_arr[i] - t_arr[i - 1];
-            emitter.GetElectricForce(etracer.GetCharges(), etracer.GetPositions(), etracer.GetForces(), i);
-            etracer.UpdateParticles(dt);
+    int n_time_subdivisions = 10;
+
+    for(int i = 0; i < n_t; ++i) {
+        for(int i_sub = 0; i_sub < n_time_subdivisions; ++i_sub) {
+            emitter.AddNumberOfEmittedParticles(i, n_e, i_sub, n_time_subdivisions);
+            std::cout << i << std::endl;
+            for(int j = 0; j < n_e.size(); ++j) {
+                if(n_e[j] > 1.0) {
+                    auto& a_n = emissionPtNormals[j];
+                    auto ej = eFieldNormals[j];
+                    std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
+                    std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
+                    etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
+                                        v0_e, f0_e);
+                    n_e[j] = 0.0;
+                }
+            }
+
+            if(i > 0) {
+                double dt = (t_arr[i] - t_arr[i - 1])/n_time_subdivisions;
+                emitter.GetElectricForce(etracer.GetCharges(), etracer.GetPositions(), etracer.GetForces(), i, i_sub, n_time_subdivisions);
+                etracer.UpdateParticles(dt);
+            }
         }
         etracer.SaveData(particle_folder, i, t_arr[i]);
     }

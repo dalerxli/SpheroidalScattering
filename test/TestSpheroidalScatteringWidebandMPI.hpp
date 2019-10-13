@@ -9,7 +9,7 @@
 
 #include <sys/types.h>  // directory check
 #include <sys/stat.h>
-#include <filesystem>
+//#include <filesystem>
 
 #include "SpheroidScattering.hpp"
 
@@ -49,10 +49,10 @@ void TestSpheroidalScatteringWidebandMPI() {
     MPI_Get_processor_name(processorName, &processorNameLen);
 
     double tipRadius= 50.0 * 1.0e-9;
-    double length = 900.0 * 1.0e-6;
+    double length = 1500.0 * 1.0e-6;
     double f0 = 0.01 * 1.0e12;
     double f1 = 3.0 * 1.0e12;
-    int n_f = 400;
+    int n_f = 600;
 
     std::string folder("out/");
     folder += std::string("R=") + boost::lexical_cast<std::string>(tipRadius/1.0e-9)
@@ -132,7 +132,7 @@ void TestSpheroidalScatteringWidebandMPI() {
         tipMat(0, 0) = tip_field;
         tipMat.WriteToFile(folder + std::string("T") + fileSuffix);
 
-        bool plotFields = true;
+        bool plotFields = false;
         if(plotFields) {
             double Dx = 4.0*tipRadius;
             double Dz = 4.0*tipRadius;
@@ -148,6 +148,8 @@ void TestSpheroidalScatteringWidebandMPI() {
 
 
             E_ksi_mesh.WriteToFile(folder + "E_ksi" + fileSuffix + eksi_fileSuffix + ".data");
+        } else{
+            spheroid.SetupFieldInterpolator(alpha, beta, gamma);
         }
 
         std::string interpolator_fileSuffix = std::string("_")                                  \
@@ -160,3 +162,103 @@ void TestSpheroidalScatteringWidebandMPI() {
 
     MPI_Finalize();
 }
+
+
+#include "FowlerNordheimEmission.hpp"
+#include "TipEmission.hpp"
+#include "ChargedParticleTracer.hpp"
+
+void TestSpheroidalScattering_Emission_MPI(std::string folder) {
+    int numOfProcesses;
+    int processRank;
+    char processorName[MPI_MAX_PROCESSOR_NAME];
+    int processorNameLen;
+
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &numOfProcesses);
+    MPI_Comm_rank(MPI_COMM_WORLD, &processRank);
+    MPI_Get_processor_name(processorName, &processorNameLen);
+
+    TipEmission emitter(folder);
+    emitter.SetElectricFieldAmplitude(-2.0e7);
+    emitter.SetMetalWorkFunction(4.5);
+    double max_patch_area = (5.0*1.0e-9) * (5.0*1.0e-9);
+    emitter.SubdevideSurface( 1.5 * emitter.GetSpheroid().GetTipRadius(), max_patch_area);
+    auto n_particles = emitter.GetTotalNumberOfEmittedParticles();
+
+    int n_total = 0;
+    for(int j = 0; j < n_particles.size(); ++j) {
+        n_total += n_particles[j];
+        std::cout << j << "  - n_e: " << n_particles[j] << std::endl;
+    }
+    std::cout << "n_total : " << n_total << std::endl;
+
+    int n_t = emitter.GetTimeSamples().size();
+    for(int i = 0; i < n_t; ++i) {
+        auto n_e = emitter.GetNumberOfEmittedParticles(i);
+        std::cout << i << " - n_e(t) " << n_e[0] << std::endl;
+    }
+
+    auto& emissionPoints = emitter.GetEmissionPoints();
+    auto& emissionPtNormals = emitter.GetEmissionPointNormals();
+    auto& eFieldNormals = emitter.GetNormalEFields();
+    auto& t_arr = emitter.GetTimeSamples();
+    double vf = 1.0e4;
+    double elec_charge = -PhysicalConstants_SI::electronCharge;
+
+    std::string particle_folder = folder + "/particles";
+    if(processRank == 0) {
+        CreateFolderIfItDoesNotExists(particle_folder, true /*delete_content*/);
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    ChargedParticleTracer etracer;
+    etracer.ReserveMemory(n_total);
+    std::vector<double> n_e(emissionPoints.size());
+
+    int n_time_subdivisions = 10;
+
+    std::string filename_mc = std::string("mpi_masscharge_") + boost::lexical_cast<std::string>(processRank) + "_";
+    std::string filename_pvm = std::string("mpi_posvelmom_") + boost::lexical_cast<std::string>(processRank) + "_";
+
+    int emitted_particle_index = 0;
+
+    for(int i = 0; i < n_t; ++i) {
+        for(int i_sub = 0; i_sub < n_time_subdivisions; ++i_sub) {
+            emitter.AddNumberOfEmittedParticles(i, n_e, i_sub, n_time_subdivisions);
+            std::cout << i << std::endl;
+            for(int j = 0; j < n_e.size(); ++j) {
+                if(n_e[j] > 1.0) {
+                    auto& a_n = emissionPtNormals[j];
+                    auto ej = eFieldNormals[j];
+                    std::array<double, 3> v0_e{vf*a_n[0], vf*a_n[1], vf*a_n[2]};
+                    std::array<double, 3> f0_e{elec_charge*ej*a_n[0], elec_charge*ej*a_n[1], elec_charge*ej*a_n[2]};
+
+                    //assign the particle to only one of the processes
+                    if(emitted_particle_index % numOfProcesses  == processRank) {
+                        etracer.AddParticle(n_e[j]*elec_charge, n_e[j]*PhysicalConstants_SI::electronMass, emissionPoints[j],
+                                            v0_e, f0_e);
+                    }
+
+                    n_e[j] = 0.0;
+                    emitted_particle_index++;
+                }
+            }
+
+            if(i > 0) {
+                double dt = (t_arr[i] - t_arr[i - 1])/n_time_subdivisions;
+                emitter.GetElectricForce(etracer.GetCharges(), etracer.GetPositions(), etracer.GetForces(), i, i_sub, n_time_subdivisions);
+                etracer.UpdateParticles(dt);
+            }
+        }
+        etracer.SaveData(particle_folder, i, t_arr[i], filename_mc, filename_pvm);
+    }
+
+    MPI_Finalize();
+}
+
+
+
+
+

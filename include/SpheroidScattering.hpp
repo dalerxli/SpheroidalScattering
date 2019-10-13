@@ -508,16 +508,11 @@ class SpheroidScattering {
         return sphInterpolator;
     }
 
-    void InterpolateFieldAtCartesianPoints(
+    auto SetupFieldInterpolator(
                                    Matrix<std::complex<double>>& alpha,
                                    Matrix<std::complex<double>>& beta,
-                                   Matrix<std::complex<double>>& gamma,
-                                   std::vector<std::array<double, 3>>& r_pts,
-                                   std::vector<std::complex<double>>& E_eta,
-                                   std::vector<std::complex<double>>& E_ksi,
-                                   std::vector<std::complex<double>>& E_phi,
-                                   bool totalField = true) {
-        // r = [x, y, z]
+                                   Matrix<std::complex<double>>& gamma
+                                ) {
         double eta_0 = (ellipse_a - 2.5*tipRadius) / (spheroid_d/2);
         double eta_1 = 1.0;
         double ksi_0 = spheroid_ksi;
@@ -532,9 +527,31 @@ class SpheroidScattering {
                                                                  std::pair<double, double>(ksi_0, ksi_1),
                                                                  std::pair<double, double>(phi_0, phi_1)};
 
-        std::array<std::size_t, 3> numOfSampls = {5, 10, 10};
+        std::array<std::size_t, 3> numOfSampls = {7, 10, 10};
 
-        auto sphInterpolator = GetFieldInterpolator(alpha, beta, gamma, coord_limits, numOfSampls);
+        GetFieldInterpolator(alpha, beta, gamma, coord_limits, numOfSampls);
+
+        return std::array<double, 6>{eta_0, eta_1, ksi_0, ksi_1, phi_0, phi_1};
+    }
+
+
+    void InterpolateFieldAtCartesianPoints(
+                                   Matrix<std::complex<double>>& alpha,
+                                   Matrix<std::complex<double>>& beta,
+                                   Matrix<std::complex<double>>& gamma,
+                                   std::vector<std::array<double, 3>>& r_pts,
+                                   std::vector<std::complex<double>>& E_eta,
+                                   std::vector<std::complex<double>>& E_ksi,
+                                   std::vector<std::complex<double>>& E_phi,
+                                   bool totalField = true) {
+        // r = [x, y, z]
+        auto sph_limits = SetupFieldInterpolator(alpha, beta, gamma);
+        double eta_0 = sph_limits[0];
+        double eta_1 = sph_limits[1];
+        double ksi_0 = sph_limits[2];
+        double ksi_1 = sph_limits[3];
+
+        auto& sphInterpolator = GetSpheroidalInterpolator();
 
         std::size_t n_pts = r_pts.size();
         E_eta.resize(n_pts);

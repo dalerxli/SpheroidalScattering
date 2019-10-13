@@ -14,7 +14,7 @@
 #include <omp.h>
 
 
-void TestSpheroidalScatteringWideband(int n_thread = 4) {
+void TestSpheroidalScatteringWideband_OMP(int n_thread = 4) {
     std::cout << "thread limit: " << omp_get_max_threads() << std::endl;
     omp_set_num_threads(n_thread);
 
